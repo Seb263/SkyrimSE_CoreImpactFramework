@@ -77,6 +77,8 @@ public:
 		hitData.totalDamage *= hitData.bonusHealthDamageMult * hitData.criticalDamageMult;
 		hitData.physicalDamage = hitData.totalDamage;
 
+		CIF_API::Internal::InvokeProjectilePreHitCallbacks(hitData);
+
 		SetDeferredHit(hitData, runtimeReady);
 	}
 

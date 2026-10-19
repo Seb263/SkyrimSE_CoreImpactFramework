@@ -37,21 +37,16 @@ public:
 		return damage;
 	}
 
-	static RE::TESObjectARMO* GetBashShield(RE::Actor* aggressor)
+	static RE::TESForm* GetBashItem(RE::Actor* aggressor)
 	{
 		if (!aggressor) return nullptr;
-	
-		if (auto* aiProcess = aggressor->GetActorRuntimeData().currentProcess;
-			aiProcess && aiProcess->high && aiProcess->high->attackData &&
-			aiProcess->high->attackData->data.flags.all(RE::AttackData::AttackFlag::kBashAttack)) {
-		
-			auto bashItem = aiProcess->GetEquippedLeftHand();
-			if (bashItem && bashItem->As<RE::TESObjectARMO>()) {
-				return bashItem->As<RE::TESObjectARMO>();
-			}
-		}
 
-		return nullptr;
+		auto* aiProcess = aggressor->GetActorRuntimeData().currentProcess;
+		if (!aiProcess || !aiProcess->high || !aiProcess->high->attackData) return nullptr;
+		if (!aiProcess->high->attackData->data.flags.all(RE::AttackData::AttackFlag::kBashAttack)) return nullptr;
+
+		auto* bashItem = aiProcess->GetEquippedLeftHand();
+		return bashItem && (bashItem->As<RE::TESObjectARMO>() || bashItem->As<RE::TESObjectWEAP>()) ? bashItem : nullptr;
 	}
 
 	static RE::TESObjectWEAP* GetBashWeapon(RE::Actor* aggressor)

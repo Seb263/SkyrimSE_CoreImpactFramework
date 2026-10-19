@@ -31,6 +31,7 @@ namespace SettingsIni
 	inline std::string sShieldLightImpactData = "Skyrim.esm:0x1697A";
 
 	// Misc
+	inline bool bForceDefaultBlockedImpact = false;
 	inline int iUseAlternateBloodSprayAlgorithm = 1;
 	inline bool bBloodSprayImpactWorkaroundEnabled = true;
 
@@ -75,6 +76,7 @@ namespace SettingsIni
 				{ "DefaultForms", "sShieldLightImpactData", &sShieldLightImpactData },
 
 				// Misc
+				{ "Misc", "bForceDefaultBlockedImpact", &bForceDefaultBlockedImpact },
 				{ "Misc", "iUseAlternateBloodSprayAlgorithm", &iUseAlternateBloodSprayAlgorithm },
 				{ "Misc", "bBloodSprayImpactWorkaroundEnabled", &bBloodSprayImpactWorkaroundEnabled }
 			};

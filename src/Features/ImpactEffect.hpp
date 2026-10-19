@@ -14,63 +14,91 @@ class ImpactEffect
 {
 public:
 
-	static RE::BGSImpactData* GetOriginalImpactData(CoreStructure::DeferredHitStruct& deferredHit, RE::BGSImpactDataSet* originalImpactDataSet = nullptr)
+	static RE::BGSImpactData* FindImpact(RE::BGSImpactDataSet* set, RE::BGSMaterialType* material)
+	{
+		if (!set) return nullptr;
+		
+		auto it = set->impactMap.find(material);
+		return it != set->impactMap.end() ? it->second : nullptr;
+	}
+
+	static RE::BGSImpactDataSet* GetAttackImpactSet(RE::Actor* attacker, RE::TESRace* aggressorRace, RE::TESObjectWEAP* weapon, bool isBash)
 	{
 		using namespace ModData;
 
-		RE::Actor* victim = deferredHit.victimHandle.get() ? deferredHit.victimHandle.get().get() : nullptr;
+		if (weapon != defaultUnarmedWeap) return isBash ? weapon->blockBashImpactDataSet : weapon->impactDataSet;
+		if (!isBash) return aggressorRace->impactDataSet;
+
+		auto* bashItem = ModUtils::GetBashItem(attacker);
+		if (auto* bashData = bashItem ? bashItem->As<RE::BGSBlockBashData>() : nullptr) return bashData->blockBashImpactDataSet;
+
+		return defaultUnarmedWeap->blockBashImpactDataSet ? defaultUnarmedWeap->blockBashImpactDataSet : defaultUnarmedWeap->impactDataSet;
+	}
+
+	static RE::BGSImpactData* GetBlockedImpactData(RE::Actor* victim, RE::BGSImpactDataSet* attackerSet)
+	{
+		using namespace ModData;
+
+		auto* aiProcess = victim->GetActorRuntimeData().currentProcess;
+		if (!aiProcess) return nullptr;
+
+		RE::TESForm* object = aiProcess->GetEquippedLeftHand() ? aiProcess->GetEquippedLeftHand() : aiProcess->GetEquippedRightHand();
+		if (!object) return weaponDefaultImpactData;
+
+		if (!SettingsIni::bForceDefaultBlockedImpact) {
+			if (auto* blockItem = object->As<RE::BGSBlockBashData>()) {
+				auto* matType = blockItem->altBlockMaterialType->IsDynamicForm() ? blockItem->altBlockMaterialType->parentType : blockItem->altBlockMaterialType;
+				if (auto* impact = FindImpact(attackerSet, matType)) return impact;
+			}
+		}
+
+		if (auto* armor = object->As<RE::TESObjectARMO>(); armor && armor->IsShield()) {
+			return armor->IsHeavyArmor() ? shieldHeavyImpactData : shieldLightImpactData;
+		}
+
+		return weaponDefaultImpactData;
+	}
+
+	static RE::BGSImpactData* GetOriginalImpactData(CoreStructure::DeferredHitStruct& deferredHit, RE::BGSImpactDataSet* forcedImpactDataSet = nullptr)
+	{
+		using namespace ModData;
+
+		RE::Actor* victim = MiscUtils::ResolveHandle<RE::Actor>(deferredHit.victimHandle);
 		if (!victim) return nullptr;
-		
-		RE::Actor* attacker = deferredHit.attackerHandle.get() ? deferredHit.attackerHandle.get().get() : nullptr;
+
+		RE::Actor* attacker = MiscUtils::ResolveHandle<RE::Actor>(deferredHit.attackerHandle);
 
 		RE::TESRace* targetRace = victim->GetRace();
 		if (!targetRace || !targetRace->bloodImpactMaterial) return nullptr;
 
-		RE::BGSMaterialType* victimMaterial = targetRace->bloodImpactMaterial;
-		auto matIt = originalMaterialsReversed.find(targetRace->bloodImpactMaterial);
-		if (matIt != originalMaterialsReversed.end()) victimMaterial = matIt->second;
+		auto* victimMaterial = targetRace->bloodImpactMaterial;
+		if (auto it = originalMaterialsReversed.find(victimMaterial); it != originalMaterialsReversed.end()) victimMaterial = it->second;
 		if (!victimMaterial) return nullptr;
 
-		RE::BGSImpactDataSet* impactSet = originalImpactDataSet;
-		if (!originalImpactDataSet) {
-			const auto hitDataFlags = deferredHit.extraHitData.hitDataFlags;
-			const auto weapon = deferredHit.extraHitData.weaponBase;
-			
-			if (hitDataFlags.any(RE::HitData::Flag::kBash) || hitDataFlags.any(RE::HitData::Flag::kBlocked)) {
-				if (weapon) impactSet = weapon->blockBashImpactDataSet;
-				else {
-					if (!attacker) return nullptr;
+		RE::BGSImpactDataSet* impactSet = forcedImpactDataSet;
 
-					if (RE::TESObjectARMO* shield = ModUtils::GetBashShield(attacker)) {
-						impactSet = shield->blockBashImpactDataSet;
-					} else {
-						impactSet = defaultUnarmedWeap->blockBashImpactDataSet ? defaultUnarmedWeap->blockBashImpactDataSet : defaultUnarmedWeap->impactDataSet;
-					}
-				}
-			} else if (weapon && weapon == defaultUnarmedWeap) {
-				if (!attacker) return nullptr;
+		if (!forcedImpactDataSet) {
+			auto* aggressorRace = attacker ? attacker->GetRace() : nullptr;
+			if (!aggressorRace || !aggressorRace->impactDataSet) return nullptr;
 
-				auto aggressorRace = attacker->GetRace();
-				if (!aggressorRace || !aggressorRace->impactDataSet) return nullptr;
+			const auto flags = deferredHit.extraHitData.hitDataFlags;
+			auto* weapon = deferredHit.extraHitData.weaponBase ? deferredHit.extraHitData.weaponBase : defaultUnarmedWeap;
+			const bool isBash = flags.any(RE::HitData::Flag::kBash);
 
-				auto impactIt = aggressorRace->impactDataSet->impactMap.find(victimMaterial);
-				return (impactIt != aggressorRace->impactDataSet->impactMap.end()) ? impactIt->second : nullptr;
-			} else if (weapon) {
-				impactSet = weapon->impactDataSet;
-			}
+			impactSet = GetAttackImpactSet(attacker, aggressorRace, weapon, isBash);
+
+			if (flags.any(RE::HitData::Flag::kBlocked)) return GetBlockedImpactData(victim, impactSet);
+			if (weapon == defaultUnarmedWeap && !isBash) return FindImpact(impactSet, victimMaterial);
 		}
+
 		if (!impactSet) return nullptr;
 
 		if (auto setIt = originalImpactMap.find(impactSet); setIt != originalImpactMap.end()) {
-			if (auto matIt = setIt->second.find(victimMaterial); matIt != setIt->second.end()) {
-				return matIt->second;
-			}
-		} else {
-			auto matIt = impactSet->impactMap.find(victimMaterial);
-			return (matIt != impactSet->impactMap.end()) ? matIt->second : nullptr;
+			auto matIt = setIt->second.find(victimMaterial);
+			return matIt != setIt->second.end() ? matIt->second : nullptr;
 		}
-		
-		return nullptr;
+
+		return FindImpact(impactSet, victimMaterial);
 	}
 
 	static void PlayImpactEffect(CoreStructure::DeferredHitStruct& deferredHit)
@@ -84,9 +112,9 @@ public:
 		const bool isMaterialModifierValid = impactModifier.has_value();
 
 		const auto magicEffect = deferredHit.extraHitData.effectBase;
-		RE::BGSImpactDataSet* originalImpactDataSet = (magicEffect && magicEffect->data.impactDataSet ? magicEffect->data.impactDataSet : nullptr);
-		
-		RE::BGSImpactData* originalImpactData = GetOriginalImpactData(deferredHit, originalImpactDataSet);
+		RE::BGSImpactDataSet* forcedImpactDataSet = (magicEffect && magicEffect->data.impactDataSet ? magicEffect->data.impactDataSet : nullptr);
+
+		RE::BGSImpactData* originalImpactData = GetOriginalImpactData(deferredHit, forcedImpactDataSet);
 		RE::BGSImpactData* impactData = isMaterialModifierValid ? impactModifier->impactData : nullptr;
 
 		if (!impactData) impactData = originalImpactData;

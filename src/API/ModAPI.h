@@ -34,7 +34,8 @@ namespace CIF_API
 		V1,
 		V2,
 		V3,
-		Latest = V3
+		V4,
+		Latest = V4
 	};
 
 	class Interface_V1
@@ -178,8 +179,14 @@ namespace CIF_API
 		virtual void ProcessHit(RE::HitData& hitData, const bool runtimeReady) noexcept = 0;
 		virtual void ProcessHit(RE::Actor* victim, RE::Projectile* projectile, const bool runtimeReady) noexcept = 0;
 	};
+	
+	class Interface_V4 : public Interface_V3
+	{
+	public:
+		virtual void RegisterProjectilePreHitCallback(const std::string& eventName, int priority, PreHitCallback callback) noexcept = 0;
+	};
 
-	using Interface = Interface_V3;
+	using Interface = Interface_V4;
 
 	using _RequestPluginAPI = void* (*)(InterfaceVersion version, const char* pluginName, REL::Version pluginVersion);
 

@@ -494,26 +494,42 @@ namespace ModData
 
 			logger::info("Define Materials And Impacts...");
 
-			for (auto* race : RE::TESDataHandler::GetSingleton()->GetFormArray<RE::TESRace>()) {
-				if (!race || !race->bloodImpactMaterial) continue;
+			auto* dataHandler = RE::TESDataHandler::GetSingleton();
 
-				if (originalMaterials.contains(race->bloodImpactMaterial)) {
-					race->bloodImpactMaterial = originalMaterials[race->bloodImpactMaterial];
-				} else {
-					RE::BGSMaterialType* clonedMaterial = race->bloodImpactMaterial->As<RE::TESForm>()->CreateDuplicateForm(false, nullptr)->As<RE::BGSMaterialType>();
-					if (!clonedMaterial) {
-						logger::error("Failed to create cloned material of \"{:08X}\".", race->bloodImpactMaterial->formID);
-						continue;
-					}
+			auto swapMaterial = [](RE::BGSMaterialType*& slot) {
+				if (!slot) return;
 
-					originalMaterials[race->bloodImpactMaterial] = clonedMaterial;
-					originalMaterialsReversed[clonedMaterial] = race->bloodImpactMaterial;
-					clonedMaterial->parentType = race->bloodImpactMaterial;
-					race->bloodImpactMaterial = clonedMaterial;
+				if (auto it = originalMaterials.find(slot); it != originalMaterials.end()) {
+					slot = it->second;
+					return;
 				}
+
+				auto* form = slot->CreateDuplicateForm(false, nullptr);
+				auto* clonedMaterial = form ? form->As<RE::BGSMaterialType>() : nullptr;
+				if (!clonedMaterial) {
+					logger::error("Failed to clone material of \"{:08X}\".", slot->formID);
+					return;
+				}
+
+				originalMaterials[slot] = clonedMaterial;
+				originalMaterialsReversed[clonedMaterial] = slot;
+				clonedMaterial->parentType = slot;
+				slot = clonedMaterial;
+			};
+
+			for (auto* weapon : dataHandler->GetFormArray<RE::TESObjectWEAP>()) {
+				if (weapon) swapMaterial(weapon->altBlockMaterialType);
 			}
 
-			for (auto* impactSet : RE::TESDataHandler::GetSingleton()->GetFormArray<RE::BGSImpactDataSet>()) {
+			for (auto* armor : dataHandler->GetFormArray<RE::TESObjectARMO>()) {
+				if (armor) swapMaterial(armor->altBlockMaterialType);
+			}
+
+			for (auto* race : dataHandler->GetFormArray<RE::TESRace>()) {
+				if (race) swapMaterial(race->bloodImpactMaterial);
+			}
+
+			for (auto* impactSet : dataHandler->GetFormArray<RE::BGSImpactDataSet>()) {
 				if (!impactSet || impactSet->IsDynamicForm()) continue;
 
 				RE::BSTHashMap<const RE::BGSMaterialType*, RE::BGSImpactData*> newMap;

@@ -11,7 +11,7 @@
 
 namespace CIF_API
 {
-    class Impl_Interface : public Interface_V3
+    class Impl_Interface : public Interface_V4
     {
     public:
         static Impl_Interface* GetSingleton() noexcept
@@ -89,6 +89,16 @@ namespace CIF_API
             return BloodSpray::CastBloodSpray(caster, spell, position, direction, power, spread);
         }
 
+        void RegisterProjectilePreHitCallback(const std::string& eventName, int priority, PreHitCallback callback) noexcept override
+        {
+            std::lock_guard lock(callbackMutex);
+
+            std::erase_if(projectilePreHitCallbacks, [&](const auto& e) { return e.eventName == eventName; });
+			projectilePreHitCallbacks.push_back({ priority, eventName, std::move(callback) });
+
+            std::sort(projectilePreHitCallbacks.begin(), projectilePreHitCallbacks.end(), [](const auto& a, const auto& b) { return a.priority > b.priority; });
+        }
+
         void RegisterPreHitCallback(const std::string& eventName, int priority, PreHitCallback callback) noexcept override
         {
             std::lock_guard lock(callbackMutex);
@@ -151,6 +161,12 @@ namespace CIF_API
 			DeferredHitFunctions::ProcessHitNormalized(victim->formID, std::nullopt);
         }
 
+        void InvokeProjectilePreHitCallbacks(RE::HitData& hitData)
+        {
+            std::shared_lock lock(callbackMutex);
+			for (const auto& e : projectilePreHitCallbacks) e.callback(e.eventName, hitData);
+        }
+
         void InvokePreHitCallbacks(RE::HitData& hitData)
         {
             std::shared_lock lock(callbackMutex);
@@ -182,6 +198,7 @@ namespace CIF_API
         };
 
         std::shared_mutex callbackMutex;
+        std::vector<PreHitEntry> projectilePreHitCallbacks;
         std::vector<PreHitEntry> preHitCallbacks;
         std::vector<PostHitEntry> postHitCallbacks;
         std::vector<PostHitEntry> postDeferredHitCallbacks;
@@ -190,6 +207,11 @@ namespace CIF_API
 
 namespace CIF_API::Internal
 {
+    void InvokeProjectilePreHitCallbacks(RE::HitData& hitData)
+    {
+        Impl_Interface::GetSingleton()->InvokeProjectilePreHitCallbacks(hitData);
+    }
+	
     void InvokePreHitCallbacks(RE::HitData& hitData)
     {
         Impl_Interface::GetSingleton()->InvokePreHitCallbacks(hitData);
@@ -225,6 +247,9 @@ extern "C" DLLEXPORT void* SKSEAPI RequestPluginAPI(CIF_API::InterfaceVersion ve
             break;
         case CIF_API::InterfaceVersion::V3:
             api = static_cast<CIF_API::Interface_V3*>(CIF_API::Impl_Interface::GetSingleton());
+            break;
+        case CIF_API::InterfaceVersion::V4:
+            api = static_cast<CIF_API::Interface_V4*>(CIF_API::Impl_Interface::GetSingleton());
             break;
         default:
             logger::warn("RequestPluginAPI called with invalid InterfaceVersion {}", static_cast<uint8_t>(version));
