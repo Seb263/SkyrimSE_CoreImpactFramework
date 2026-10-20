@@ -20,7 +20,7 @@ local projectRoot = os.projectdir():gsub("/", "\\") .. "\\"
 -- project infos
 local projectName = "CoreImpactFramework"
 set_project(projectName)
-set_version("2.0.8")
+set_version("2.0.9")
 set_license("GPL-3.0")
 set_languages("c++23")
 set_warnings("allextra")

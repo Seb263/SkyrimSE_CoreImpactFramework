@@ -16,7 +16,7 @@ public:
 
 	static RE::BGSImpactData* FindImpact(RE::BGSImpactDataSet* set, RE::BGSMaterialType* material)
 	{
-		if (!set) return nullptr;
+		if (!set || !material) return nullptr;
 		
 		auto it = set->impactMap.find(material);
 		return it != set->impactMap.end() ? it->second : nullptr;
@@ -46,7 +46,7 @@ public:
 		if (!object) return weaponDefaultImpactData;
 
 		if (!SettingsIni::bForceDefaultBlockedImpact) {
-			if (auto* blockItem = object->As<RE::BGSBlockBashData>()) {
+			if (auto* blockItem = object->As<RE::BGSBlockBashData>(); blockItem && blockItem->altBlockMaterialType) {
 				auto* matType = blockItem->altBlockMaterialType->IsDynamicForm() ? blockItem->altBlockMaterialType->parentType : blockItem->altBlockMaterialType;
 				if (auto* impact = FindImpact(attackerSet, matType)) return impact;
 			}
