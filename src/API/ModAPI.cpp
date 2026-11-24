@@ -157,7 +157,7 @@ namespace CIF_API
 
 			TRACE("API -> ProcessHit on actor \"{:08X}\"", victim->formID);
 
-			DeferredHitFunctions::SetDeferredHit(projectile, victim, runtimeReady);
+			DeferredHitFunctions::SetDeferredHitProjectile({ projectile }, victim, runtimeReady);
 			DeferredHitFunctions::ProcessHitNormalized(victim->formID, std::nullopt);
         }
 

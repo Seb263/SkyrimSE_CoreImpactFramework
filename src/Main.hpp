@@ -5,6 +5,8 @@
 #include "Core/Structure.h"
 #include "Core/DeferredHit.hpp"
 
+#include "Features/BloodSpray.hpp"
+
 #include "Utils/MiscUtils.hpp"
 #include "Utils/ModUtils.hpp"
 
@@ -28,15 +30,17 @@ namespace Events
 			_CheckAddEffect = trampoline.write_call<5>(REL::RelocationID(33763, 34547).address() + REL::Relocate(0x4A3, 0x656, 0x427), CheckAddEffectTemplate);
 			logger::info("CheckAddEffectTemplate hooked at address: 0x{:X}", _CheckAddEffect.address());
 
-			if (!REL::Module::IsVR()) {
-				REL::Relocation<std::uintptr_t> arrowProjectileVtbl{ RE::VTABLE_ArrowProjectile[0] };
-				_ArrowCollission = arrowProjectileVtbl.write_vfunc(190, OnArrowCollisionTemplate);
-				logger::info("ArrowCollision hooked at virtual table index 190. Address: 0x{:X}", _ArrowCollission.address());
+			REL::Relocation<std::uintptr_t> arrowProjectileVtbl{ RE::VTABLE_ArrowProjectile[0] };
+			REL::Relocation<std::uintptr_t> missileProjectileVtbl{ RE::VTABLE_MissileProjectile[0] };
 
-				REL::Relocation<std::uintptr_t> missileProjectileVtbl{ RE::VTABLE_MissileProjectile[0] };
-				_missileCollission = missileProjectileVtbl.write_vfunc(190, OnMissileCollisionTemplate);
-				logger::info("MissileCollision hooked at virtual table index 190. Address: 0x{:X}", _missileCollission.address());
-			}
+			_AddImpactArrow = arrowProjectileVtbl.write_vfunc(REL::Relocate(0xBD, 0xBD, 0xBE), AddImpactArrowTemplate);
+			logger::info("AddImpactArrow hooked at address: 0x{:X}", _AddImpactArrow.address());
+
+			_AddImpactMissile = missileProjectileVtbl.write_vfunc(REL::Relocate(0xBD, 0xBD, 0xBE), AddImpactMissileTemplate);
+			logger::info("AddImpactMissile hooked at address: 0x{:X}", _AddImpactMissile.address());
+
+			_OnMissile3DLoaded = missileProjectileVtbl.write_vfunc(REL::Relocate(0xC0, 0xC0, 0xC1), OnMissile3DLoadedTemplate);
+			logger::info("OnMissile3DLoaded hooked at address: 0x{:X}", _OnMissile3DLoaded.address());
 		}
 
 		// This event triggers deferred hits in post-runtime
@@ -99,23 +103,6 @@ namespace Events
 		}
 		static inline REL::Relocation<decltype(ProcessHitTemplate)> _ProcessHit;
 
-		// Event triggered by missile-type spells (used only to apply a fix)
-		static void OnMissileCollisionTemplate(RE::Projectile* projectile, RE::hkpAllCdPointCollector* allCdPointCollector)
-		{
-			if (projectile && SettingsIni::bBloodSprayImpactWorkaroundEnabled) {
-				if (auto* projectileBase = projectile->GetProjectileBase();
-					projectileBase && projectileBase->data.collisionLayer == ModRuntimeBlood_CollisionLayer) {
-					BloodSpray::ImpactWorkaround(projectile);
-					allCdPointCollector->Reset();
-					_missileCollission(projectile, allCdPointCollector);
-					return;
-				}
-			}
-
-			_missileCollission(projectile, allCdPointCollector);
-		}
-		static inline REL::Relocation<decltype(OnMissileCollisionTemplate)> _missileCollission;
-
 		// Pre-runtime event triggered when a MagicEffect is added to an NPC's effect stack
 		static void CheckAddEffectTemplate(RE::ActiveEffect* a_this, float a_power, bool a_onlyHostile)
 		{
@@ -125,22 +112,55 @@ namespace Events
 		}
 		static inline REL::Relocation<decltype(CheckAddEffectTemplate)> _CheckAddEffect;
 
-		// Pre-runtime event triggered by an arrow impact on an NPC
-		static void OnArrowCollisionTemplate(RE::Projectile* projectile, RE::hkpAllCdPointCollector* allCdPointCollector)
+		// Allows runtime projectiles (blood sprays) to be identified, ensuring they are never retained in save data
+		static void OnMissile3DLoadedTemplate(RE::Projectile* a_projectile)
 		{
-			if (projectile && allCdPointCollector) {
-				if (RE::Actor* victim = ModUtils::GetCollisionSourceReference(projectile, allCdPointCollector)) {
-					TRACE("OnArrowCollisionTemplate on actor \"{:08X}\"", victim->formID);
-					DeferredHitFunctions::SetDeferredHit(projectile, victim, false);
+			_OnMissile3DLoaded(a_projectile);
+			
+			if (!a_projectile) return;
+
+			if (auto* projectileBase = a_projectile->GetProjectileBase();
+				projectileBase && projectileBase->data.collisionLayer == ModRuntimeBlood_CollisionLayer) {
+				a_projectile->inGameFormFlags.set(RE::TESForm::InGameFormFlag::kWantsDelete, RE::TESForm::InGameFormFlag::kRefPermanentlyDeleted);
+			}
+		}
+		static inline REL::Relocation<decltype(OnMissile3DLoadedTemplate)> _OnMissile3DLoaded;
+
+		// Pre-runtime event triggered by an arrow impact on an NPC
+		static void AddImpactArrowTemplate(RE::ArrowProjectile* a_projectile, RE::TESObjectREFR* a_ref, const RE::NiPoint3& a_targetLoc, const RE::NiPoint3& a_velocity, RE::hkpCollidable* a_collidable, std::int32_t a_arg6, std::uint32_t a_arg7)
+		{
+			if (a_projectile && a_ref) {
+				if (RE::Actor* victim = a_ref->As<RE::Actor>()) {
+					TRACE("AddImpactArrowTemplate on actor \"{:08X}\"", victim->formID);
+
+					auto* collidableObj = a_collidable ? RE::TESHavokUtilities::FindCollidableObject(*a_collidable) : nullptr;
+					const auto nodeName = collidableObj ? std::optional<std::string>(collidableObj->name.c_str()) : std::nullopt;
+
+					DeferredHitFunctions::SetDeferredHitProjectile({ a_projectile, a_targetLoc, a_velocity, nodeName }, victim, false);
 					DeferredHitFunctions::ProcessHitNormalized(victim->formID, std::nullopt);
 				}
 			}
 
-			_ArrowCollission(projectile, allCdPointCollector);
+			return _AddImpactArrow(a_projectile, a_ref, a_targetLoc, a_velocity, a_collidable, a_arg6, a_arg7);
 		}
-		static inline REL::Relocation<decltype(OnArrowCollisionTemplate)> _ArrowCollission;
+		static inline REL::Relocation<decltype(AddImpactArrowTemplate)> _AddImpactArrow;
 
-		// Function to find a projectile reference from its source form
+		// Event triggered by missile-type spells (used only to apply a fix)
+		static void AddImpactMissileTemplate(RE::MissileProjectile* a_projectile, RE::TESObjectREFR* a_ref, const RE::NiPoint3& a_targetLoc, const RE::NiPoint3& a_velocity, RE::hkpCollidable* a_collidable, std::int32_t a_arg6, std::uint32_t a_arg7)
+		{
+			if (a_projectile && SettingsIni::bBloodSprayImpactWorkaroundEnabled) {
+				if (auto* projectileBase = a_projectile->GetProjectileBase();
+					projectileBase && projectileBase->data.collisionLayer == ModRuntimeBlood_CollisionLayer) {
+					BloodSpray::ImpactWorkaround(a_projectile);
+					return;
+				}
+			}
+
+			return _AddImpactMissile(a_projectile, a_ref, a_targetLoc, a_velocity, a_collidable, a_arg6, a_arg7);
+		}
+		static inline REL::Relocation<decltype(AddImpactMissileTemplate)> _AddImpactMissile;
+
+		// Function to find a a_projectile reference from its source form
 		static void TryResolveProjectileHit(RE::BGSProjectile* projectileBase, RE::Actor* victim)
 		{
 			if (!projectileBase || !victim) return;
@@ -167,7 +187,7 @@ namespace Events
 			if (!projectile) projectile = find_projectile(projectileManager->unlimited);
 			if (!projectile) return;
 
-			DeferredHitFunctions::SetDeferredHit(projectile, victim, true);
+			DeferredHitFunctions::SetDeferredHitProjectile({ projectile }, victim, true);
 			DeferredHitFunctions::ProcessHitNormalized(victim->formID, std::nullopt);
 		}
 

@@ -195,6 +195,8 @@ public:
 		auto* projectile = spell->effects[0]->baseEffect->data.projectileBase;
 		if (!projectile) return false;
 
+		ModUtils::SetBloodSpraySpellCollisionLayer(spell);
+
 		direction.Unitize();
 		RE::NiPoint3 finalDirection = MiscUtils::ApplySpreadToDirection(direction, (spread >= 0.0f ? spread : SettingsIni::fBloodSpraySpread));
 
@@ -223,6 +225,7 @@ public:
 
 		CastBloodSprayAlternate(spell, projectile, projectile->GetPosition(), projectile->GetPosition() + direction);
 		
+		projectile->inGameFormFlags.set(RE::TESForm::InGameFormFlag::kWantsDelete, RE::TESForm::InGameFormFlag::kRefPermanentlyDeleted);
 		projectileRuntime.flags.set(RE::Projectile::Flags::kDestroyed);
 	}
 
@@ -241,9 +244,6 @@ private:
 
 			RE::ProjectileHandle projectileHandle;
 			RE::Projectile::LaunchSpell(&projectileHandle, shooter, spell, position, rotation);
-			if (auto* genProjectile = projectileHandle ? projectileHandle.get().get() : nullptr) {
-				genProjectile->inGameFormFlags.set(RE::TESForm::InGameFormFlag::kWantsDelete, RE::TESForm::InGameFormFlag::kRefPermanentlyDeleted);
-			}
 		});
 	}
 
@@ -258,25 +258,17 @@ private:
 		SKSE::GetTaskInterface()->AddTask([spell, markerSourceHandle = markerSource->GetHandle(), markerTargetHandle = markerTarget->GetHandle()]() {
 			auto* markerSource = MiscUtils::GetValidReference(MiscUtils::ResolveHandle(markerSourceHandle));
 			auto* markerTarget = MiscUtils::GetValidReference(MiscUtils::ResolveHandle(markerTargetHandle));
-			if (!markerSource || !markerTarget) return;
 			
-			auto* caster = markerSource->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
-			if (caster && markerTarget && markerTarget->parentCell && markerTarget->parentCell->IsAttached()) {
-				caster->CastSpellImmediate(spell, true, markerTarget, 0.0f, true, 0.0f, nullptr);
+			if (markerSource && markerTarget) {
+				auto* caster = markerSource->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
+				if (caster && markerTarget && markerTarget->parentCell && markerTarget->parentCell->IsAttached()) {
+					caster->CastSpellImmediate(spell, true, markerTarget, 0.0f, true, 0.0f, nullptr);
+				}
 			}
 
-			TimeUtils::WaitAndCall(300ms, [markerSourceHandle, markerTargetHandle](TimeUtils::CallResult result, const std::chrono::nanoseconds) {
-				if (result != TimeUtils::CallResult::kEndDone) return true;
-				
-				auto* markerSource = MiscUtils::GetValidReference(MiscUtils::ResolveHandle(markerSourceHandle));
-				auto* markerTarget = MiscUtils::GetValidReference(MiscUtils::ResolveHandle(markerTargetHandle));
-				if (!markerSource || !markerTarget) return true;
-
-				markerSource->inGameFormFlags.set(RE::TESForm::InGameFormFlag::kWantsDelete, RE::TESForm::InGameFormFlag::kRefPermanentlyDeleted);
-				markerTarget->inGameFormFlags.set(RE::TESForm::InGameFormFlag::kWantsDelete, RE::TESForm::InGameFormFlag::kRefPermanentlyDeleted);
-				
-				return true;
-			});
+			auto* gc = RE::GarbageCollector::GetSingleton();
+			if (markerSource) gc->Add(markerSource, true);
+			if (markerTarget) gc->Add(markerTarget, true);
 		});
 	}
 

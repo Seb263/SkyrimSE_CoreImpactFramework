@@ -35,7 +35,9 @@ public:
 			return static_cast<uint32_t>(std::hash<std::string>{}(s));
 		};
 
-		deferredHit.bipedEntry = BipedFunctions::GetHitBipedSlots(victim, extra.hitPosition, deferredHit.bipedBones);
+		// Use the projectile node if it belongs to bipedBones, otherwise find the closest node
+		if (auto entry = BipedFunctions::GetBipedEntryFromNode(extra.nodeName, deferredHit.bipedBones)) deferredHit.bipedEntry = std::move(*entry);
+		else deferredHit.bipedEntry = BipedFunctions::GetHitBipedSlots(victim, extra.hitPosition, deferredHit.bipedBones);
 		ctx.bipedEntry = deferredHit.bipedEntry;
 
 		ctx.bipedLimbHash = hashStr(deferredHit.bipedEntry.bipedLimb);

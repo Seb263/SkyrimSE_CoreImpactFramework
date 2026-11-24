@@ -45,7 +45,6 @@ namespace ModData
 	inline std::unordered_map<RE::BGSImpactDataSet*, std::unordered_map<RE::BGSMaterialType*, RE::BGSImpactData*>> originalImpactMap;
 	inline std::unordered_map<RE::BGSMaterialType*, RE::BGSMaterialType*> originalMaterials; // origin => clone
 	inline std::unordered_map<RE::BGSMaterialType*, RE::BGSMaterialType*> originalMaterialsReversed; // clone => origin
-	inline std::unordered_map<RE::SpellItem*, RE::BGSProjectile*> spellProjectileMap;
 
 	inline RE::BGSImpactData* ModRuntime_Impact;
 	inline RE::SpellItem* ModRuntimeBloodSpray_Spell;

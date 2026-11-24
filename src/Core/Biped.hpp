@@ -208,7 +208,6 @@ public:
 		auto* actor3D = target->Get3D1(false);
 		if (!actor3D) return {};
 
-		static constexpr auto kExtraKey = "Extra";
 		const BipedMapping::BipedBoneData extraData = GetExtraNodesMap(target);
 
 		const float worldScaleInverse = RE::bhkWorld::GetWorldScaleInverse();
@@ -342,6 +341,37 @@ public:
 
 		if (closestNodeName.empty()) return {};
 
+		auto result = BuildBipedEntry(closestNodeName, bipedBones, extraData);
+
+		if (debugVerboseMode > 1) {
+			TRACE("Closest node: '{}', Keys: [{}], Slots: [{}], HitPosition: [{}]",
+				result.bipedNode, fmt::join(result.bipedKeys, ", "), fmt::join(result.bipedSlots, ", "), hitPosition);
+		}
+
+		return result;
+	}
+
+	static std::optional<CoreStructure::DeferredHitStruct::BipedEntry> GetBipedEntryFromNode(
+		const std::string& nodeName, const CoreStructure::BipedMapping::BipedBonesMap& bipedBones)
+	{
+		if (nodeName.empty()) return std::nullopt;
+
+		const bool found = std::ranges::any_of(bipedBones, [&](const auto& pair) {
+			return std::ranges::contains(pair.second.nodes, nodeName);
+		});
+		if (!found) return std::nullopt;
+
+		return BuildBipedEntry(nodeName, bipedBones, {});
+	}
+
+private:
+
+	static CoreStructure::DeferredHitStruct::BipedEntry BuildBipedEntry(const std::string& closestNodeName,
+		const CoreStructure::BipedMapping::BipedBonesMap& bipedBones, const CoreStructure::BipedMapping::BipedBoneData& extraData)
+	{
+		using namespace CoreStructure;
+		static constexpr auto kExtraKey = "Extra";
+
 		std::unordered_set<int> uniqueSlots;
 		std::vector<std::string> relatedKeys;
 
@@ -379,11 +409,6 @@ public:
 		result.bipedLimb = bipedLimb;
 		result.bipedKeys = std::move(relatedKeys);
 		result.bipedSlots = std::vector<int>(uniqueSlots.begin(), uniqueSlots.end());
-
-		if (debugVerboseMode > 1) {
-			TRACE("Closest node: '{}', Keys: [{}], Slots: [{}], HitPosition: [{}]",
-				result.bipedNode, fmt::join(result.bipedKeys, ", "), fmt::join(result.bipedSlots, ", "), hitPosition);
-		}
 
 		return result;
 	}

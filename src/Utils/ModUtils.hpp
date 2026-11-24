@@ -64,6 +64,28 @@ public:
 		return nullptr;
 	}
 
+	static void SetBloodSpraySpellCollisionLayer(RE::SpellItem* a_spell)
+	{
+		if (!a_spell) return;
+
+		static std::unordered_set<RE::SpellItem*> processedSpells;
+		static std::mutex mutex;
+
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			if (!processedSpells.insert(a_spell).second) return;
+		}
+
+		for (auto* effect : a_spell->effects) {
+			if (!effect || !effect->baseEffect) continue;
+
+			RE::EffectSetting* baseEffect = effect->baseEffect;
+			if (baseEffect->data.projectileBase) {
+				baseEffect->data.projectileBase->data.collisionLayer = ModData::ModRuntimeBlood_CollisionLayer;
+			}
+		}
+	}
+
 	static RE::NiPoint3 GetActorFireNodePosition(RE::TESObjectREFR* shooterRef)
 	{
 		RE::NiPoint3 fireNodePos{};
@@ -82,25 +104,6 @@ public:
 		}
 
 		return fireNodePos;
-	}
-
-	static RE::Actor* GetCollisionSourceReference(RE::Projectile* projectile, RE::hkpAllCdPointCollector* allCdPointCollector)
-	{
-		if (!allCdPointCollector || allCdPointCollector->hits.empty()) return nullptr;
-
-		auto getActorFromCollidable = [](const RE::hkpCollidable* collidable) -> RE::Actor* {
-			if (!collidable) return nullptr;
-			auto* refr = RE::TESHavokUtilities::FindCollidableRef(*collidable);
-			return (refr && refr->formType == RE::FormType::ActorCharacter) ? refr->As<RE::Actor>() : nullptr;
-		};
-
-		for (auto& hit : allCdPointCollector->hits) {
-			if (auto* actor = getActorFromCollidable(hit.rootCollidableB)) {
-				return actor;
-			}
-		}
-
-		return nullptr;
 	}
 
 	static bool RayCastSpellActor(RE::Actor* origin, RE::Actor* target,

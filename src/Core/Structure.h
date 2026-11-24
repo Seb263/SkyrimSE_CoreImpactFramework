@@ -220,6 +220,14 @@ namespace CoreStructure
         std::vector<Bucket> buckets;
     };
 
+	struct ProjectileHit
+	{
+		RE::Projectile* projectile = nullptr;
+		std::optional<RE::NiPoint3> targetLoc = std::nullopt;
+		std::optional<RE::NiPoint3> velocity = std::nullopt;
+		std::optional<std::string> nodeName = std::nullopt;
+	};
+
 	struct DeferredHitStruct
 	{
 		using BipedEntry = CIF_API::Interface::BipedEntry;
@@ -236,6 +244,7 @@ namespace CoreStructure
 			RE::NiPoint3 hitDirection;
 
 			RE::ObjectRefHandle sourceHandle;
+			std::string nodeName;
 			REX::EnumSet<RE::HitData::Flag, std::uint32_t> hitDataFlags;
 
 			Filter::WeaponType weaponType = Filter::WeaponType::kOther;

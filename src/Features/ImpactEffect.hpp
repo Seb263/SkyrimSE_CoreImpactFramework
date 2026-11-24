@@ -77,7 +77,7 @@ public:
 
 		RE::BGSImpactDataSet* impactSet = forcedImpactDataSet;
 
-		if (!forcedImpactDataSet) {
+		if (!forcedImpactDataSet && !deferredHit.isMagic) {
 			auto* aggressorRace = attacker ? attacker->GetRace() : nullptr;
 			if (!aggressorRace || !aggressorRace->impactDataSet) return nullptr;
 

@@ -134,16 +134,6 @@ namespace JSONHandler
 
 			if (modifiers.contains("BloodSpray") && modifiers["BloodSpray"].is_string()) {
 				mod.bloodSpray = MiscUtils::GetFormFromAssoc<RE::SpellItem>(modifiers.value("BloodSpray", ""));
-				if (mod.bloodSpray && !mod.bloodSpray->effects.empty()) {
-					if (RE::EffectSetting* firstEffect = mod.bloodSpray->effects[0]->baseEffect) {
-						if (firstEffect->data.projectileBase) {
-							firstEffect->data.projectileBase->data.collisionLayer = ModRuntimeBlood_CollisionLayer;
-							if (spellProjectileMap.find(mod.bloodSpray) == spellProjectileMap.end()) {
-								spellProjectileMap[mod.bloodSpray] = firstEffect->data.projectileBase;
-							}
-						}
-					}
-				}
 			} else mod.bloodSpray = nullptr;
 
 			if (modifiers.contains("Stagger") && !modifiers["Stagger"].is_null()) {

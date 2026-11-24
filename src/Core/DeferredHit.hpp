@@ -24,9 +24,10 @@ class DeferredHitFunctions
 public:
 
 	// Set Deferred Hit from Projectile
-	static void SetDeferredHit(RE::Projectile* projectile, RE::Actor* victimRef, const bool runtimeReady)
+	static void SetDeferredHitProjectile(const CoreStructure::ProjectileHit& projectileHit, RE::Actor* victimRef, const bool runtimeReady)
 	{
 		// NOTE: Damage cannot reliably account for critical hits.
+		auto* projectile = projectileHit.projectile;
 		if (!projectile || !victimRef) return;
 
 		auto& projectileRuntime = projectile->GetProjectileRuntimeData();
@@ -35,9 +36,11 @@ public:
 		auto* attacker = MiscUtils::ResolveHandle<RE::Actor>(projectileRuntime.shooter);
 		if (!attacker) return;
 
+		const RE::NiPoint3 velocity = projectileHit.velocity ? (*projectileHit.velocity * -1.0f) : projectileRuntime.velocity;
+
 		RE::HitData hitData{};
-		hitData.hitPosition = projectile->GetPosition();
-		if (projectileRuntime.velocity != RE::NiPoint3{}) (hitData.hitDirection = projectileRuntime.velocity).Unitize();
+		hitData.hitPosition = projectileHit.targetLoc.value_or(projectile->data.location);
+		if (velocity != RE::NiPoint3{}) (hitData.hitDirection = velocity).Unitize();
 		else (hitData.hitDirection = hitData.hitPosition - ModUtils::GetActorFireNodePosition(attacker)).Unitize();
 
 		if (!projectileRuntime.ammoSource) { // Magic only
@@ -79,11 +82,11 @@ public:
 
 		CIF_API::Internal::InvokeProjectilePreHitCallbacks(hitData);
 
-		SetDeferredHit(hitData, runtimeReady);
+		SetDeferredHit(hitData, runtimeReady, projectileHit.nodeName);
 	}
 
 	// Set Deferred Hit from Hit Data
-	static void SetDeferredHit(RE::HitData& hitData, const bool runtimeReady)
+	static void SetDeferredHit(RE::HitData& hitData, const bool runtimeReady, const std::optional<std::string>& nodeName = std::nullopt)
 	{
 		using namespace CoreStructure;
 
@@ -107,6 +110,7 @@ public:
 
 		if (extraHitData.hitPosition == RE::NiPoint3{}) extraHitData.hitPosition = hitData.hitPosition;
 		if (extraHitData.hitDirection == RE::NiPoint3{}) (extraHitData.hitDirection = hitData.hitDirection).Unitize();
+		if (nodeName) extraHitData.nodeName = *nodeName;
 		extraHitData.hitDataFlags = hitData.flags;
 		extraHitData.weaponBase = hitData.weapon;
 		deferredHit.bipedBones = BipedFunctions::GetBipedModifier(victim).value_or(BipedMapping::BipedBonesMap{});
@@ -121,7 +125,7 @@ public:
 				if (projectileRuntime.ammoSource) { // Arrow
 					extraHitData.weaponType = Filter::WeaponType::kRanged;
 					extraHitData.hitPower = projectileRuntime.power;
-				} else { // Magic
+				} else if (projectileRuntime.avEffect) {
 					deferredHit.isMagic = true;
 					extraHitData.weaponType = Filter::WeaponType::kMagic;
 					extraHitData.effectBase = projectileRuntime.avEffect;
@@ -137,6 +141,8 @@ public:
 				extraHitData.weaponBase = ModUtils::GetBashWeapon(attacker);
 			}
 		}
+
+		if (!deferredHit.isMagic) deferredHit.activeEffectsMap.clear();
 
 		if (extraHitData.weaponBase && !extraHitData.magicItemBase) {
 			if (extraHitData.weaponBase->formEnchanting) extraHitData.magicItemBase = extraHitData.weaponBase->formEnchanting;
@@ -236,6 +242,7 @@ public:
 			}
 
 			CIF_API::Internal::InvokePostHitCallbacks(deferredHit.ctx);
+			PurgeActiveEffects(victimFormID);
 		}
 	}
 
@@ -306,6 +313,15 @@ public:
 			if (!timestamp || it->second.timestamp == timestamp) {
 				deferredHitMap.erase(it);
 			}
+		}
+	}
+
+	static void PurgeActiveEffects(RE::FormID victimFormID)
+	{
+		std::lock_guard lock(deferredHitMapMutex);
+		
+		if (auto it = deferredHitMap.find(victimFormID); it != deferredHitMap.end()) {
+			it->second.activeEffectsMap.clear();
 		}
 	}
 
