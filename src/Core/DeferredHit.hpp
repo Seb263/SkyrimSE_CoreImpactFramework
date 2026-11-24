@@ -34,7 +34,7 @@ public:
 
 		auto* victim = MiscUtils::GetValidReference<RE::Actor>(victimRef);
 		auto* attacker = MiscUtils::ResolveHandle<RE::Actor>(projectileRuntime.shooter);
-		if (!attacker) return;
+		if (!victim || !attacker) return;
 
 		const RE::NiPoint3 velocity = projectileHit.velocity ? (*projectileHit.velocity * -1.0f) : projectileRuntime.velocity;
 
